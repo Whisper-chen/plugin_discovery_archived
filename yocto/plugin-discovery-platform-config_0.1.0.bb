@@ -8,7 +8,7 @@
 # in a real QLI build. PD_MACHINE must be the string in /sys/devices/soc0/machine of the device.
 SUMMARY = "plugin_discovery platform configuration (Qualcomm Linux)"
 LICENSE = "BSD-3-Clause-Clear"
-LIC_FILES_CHKSUM = "file://LICENSE;md5=<fill in>"
+LIC_FILES_CHKSUM = "file://LICENSE;md5=27bed425d409914cf1a2a322089c7558"
 SRC_URI = "git://github.com/qualcomm-qrb-ros/plugin_discovery.git;protocol=https;branch=platform-config"
 SRCREV = "<commit of the platform-config branch>"
 S = "${WORKDIR}/git"
