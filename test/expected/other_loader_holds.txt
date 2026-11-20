@@ -1,9 +1,0 @@
-# Intentional deviation from class_loader: isLibraryLoaded() reports whether THIS loader holds the library. class_loader returns true for any open library, which contradicts its own documentation. An on-demand loader sharing a library held by another loader loads it on first create; class_loader throws CreateClassException.
-late before: loader=false anybody=true mapped=true
-late sees []
-late has Dog false
-  -> Dog@A
-late after create: loader=false anybody=true mapped=true
-late sees []
-holder sees [test::Cat,test::Dog]
-[exit 0]

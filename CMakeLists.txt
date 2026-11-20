@@ -1,120 +1,50 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 cmake_minimum_required(VERSION 3.16)
-project(plugin_discovery VERSION 0.3.0 LANGUAGES CXX)
+project(plugin-discovery-platform-config VERSION 0.1.0 LANGUAGES NONE)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-option(PLUGIN_LOADER_BUILD_TESTS "Build the plugin_loader scenario tests" OFF)
-option(PLUGIN_LOADER_COMPARE_UPSTREAM
-  "Also build the scenarios against ROS class_loader to compare behaviour (needs ROS sourced)" OFF)
-
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-# Installed binaries and plugins find libplugin_loader.so without LD_LIBRARY_PATH.
-# Only a default: distribution builds (e.g. Yocto) pass -DCMAKE_INSTALL_RPATH= to drop it.
-if(NOT DEFINED CMAKE_INSTALL_RPATH)
-  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_FULL_LIBDIR}")
+# Every <domain>/<machine>-<os>-<domain>.config.yaml is a candidate that platform-detect may link
+# into /etc/plugin_discovery/platform.d/. One package carries all domains; each domain's directory
+# belongs to that domain's team (see .github/CODEOWNERS).
+#
+#   cmake -S . -B build && cd build && cpack -G DEB
+file(GLOB domain_dirs LIST_DIRECTORIES true RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS */)
+set(candidates "")
+foreach(dir IN LISTS domain_dirs)
+  if(NOT IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${dir} OR dir MATCHES "^(\\.|packaging|build)")
+    continue()
+  endif()
+  file(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}/${dir} ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/*)
+  foreach(f IN LISTS files)
+    # The file name says machine, OS and domain; the domain must be the directory it lives in.
+    if(NOT f MATCHES "^([A-Za-z0-9]+)-(Ubuntu|QCLinux)-([a-z0-9_]+)\\.config\\.yaml$")
+      message(FATAL_ERROR "${dir}/${f}: name must be <machine>-<Ubuntu|QCLinux>-<domain>.config.yaml")
+    endif()
+    if(NOT CMAKE_MATCH_3 STREQUAL dir)
+      message(FATAL_ERROR "${dir}/${f}: the domain in the name (${CMAKE_MATCH_3}) is not its directory (${dir})")
+    endif()
+    file(READ ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/${f} content)
+    if(NOT content MATCHES "\n  ${dir}:")
+      message(FATAL_ERROR "${dir}/${f}: no 'domains: ${dir}:' block inside")
+    endif()
+    list(APPEND candidates ${CMAKE_CURRENT_SOURCE_DIR}/${dir}/${f})
+  endforeach()
+endforeach()
+if(NOT candidates)
+  message(FATAL_ERROR "no candidate found")
 endif()
+install(FILES ${candidates} DESTINATION share/plugin_discovery/platforms.d)
 
-find_package(yaml-cpp REQUIRED)
-
-# --- plugin_loader: dlopen + registration macro + process-wide factory table.
-#     Plugins and hosts must link the SAME shared library so they share the table.
-add_library(plugin_loader SHARED
-  src/impl.cpp
-  src/class_loader.cpp
-  src/multi_library_class_loader.cpp)
-add_library(plugin_discovery::plugin_loader ALIAS plugin_loader)
-target_include_directories(plugin_loader PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(plugin_loader PUBLIC ${CMAKE_DL_LIBS})
-target_compile_options(plugin_loader PRIVATE -Wall -Wextra -Wpedantic)
-
-# --- plugin_discovery: manifests + configuration -> which backends to load.
-add_library(plugin_discovery SHARED src/plugin_registry.cpp)
-add_library(plugin_discovery::plugin_discovery ALIAS plugin_discovery)
-target_link_libraries(plugin_discovery
-  PUBLIC plugin_loader ${CMAKE_DL_LIBS}
-  PRIVATE yaml-cpp::yaml-cpp)  # implementation detail, not in the public header
-target_compile_options(plugin_discovery PRIVATE -Wall -Wextra -Wpedantic)
-
-# --- pluginlib-detect: show the merged configuration and where each entry came from.
-add_executable(pluginlib-detect tools/pluginlib_detect.cpp)
-target_link_libraries(pluginlib-detect PRIVATE plugin_discovery)
-target_compile_options(pluginlib-detect PRIVATE -Wall -Wextra -Wpedantic)
-
-# --- platform-detect: first-boot choice of the platform configuration (see tools/platform_detect.cpp).
-add_executable(platform-detect tools/platform_detect.cpp)
-target_compile_definitions(platform-detect PRIVATE
-  PLATFORM_DETECT_CANDIDATES_DIR="${CMAKE_INSTALL_FULL_DATADIR}/plugin_discovery/platforms.d")
-target_compile_options(platform-detect PRIVATE -Wall -Wextra -Wpedantic)
-configure_file(systemd/plugin-discovery-platform-detect.service.in
-  ${CMAKE_CURRENT_BINARY_DIR}/plugin-discovery-platform-detect.service @ONLY)
-
-install(TARGETS plugin_loader plugin_discovery pluginlib-detect platform-detect
-  EXPORT plugin_discoveryTargets
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-# Platform packages install their candidates here; the library never reads this directory,
-# platform-detect links the matching ones into /etc/plugin_discovery/platform.d/.
-install(DIRECTORY DESTINATION ${CMAKE_INSTALL_DATADIR}/plugin_discovery/platforms.d)
-# Runs platform-detect once, on the first boot. Application units order themselves After= it.
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/plugin-discovery-platform-detect.service
-  DESTINATION lib/systemd/system)
-
-install(EXPORT plugin_discoveryTargets
-  NAMESPACE plugin_discovery::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/plugin_discovery)
-
-configure_package_config_file(
-  cmake/plugin_discoveryConfig.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/plugin_discoveryConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/plugin_discovery)
-write_basic_package_version_file(
-  ${CMAKE_CURRENT_BINARY_DIR}/plugin_discoveryConfigVersion.cmake
-  COMPATIBILITY SameMajorVersion)
-install(FILES
-  ${CMAKE_CURRENT_BINARY_DIR}/plugin_discoveryConfig.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/plugin_discoveryConfigVersion.cmake
-  cmake/plugin_discoveryMacros.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/plugin_discovery)
-
-# Filled-in configuration examples, to copy from.
-install(FILES
-  templates/platform-config/examples/QCS8300-Ubuntu-camera.config.yaml
-  templates/customer-config/examples/50-camera-v4l2.config.yaml
-  DESTINATION ${CMAKE_INSTALL_DOCDIR}/examples)
-install(FILES LICENSE DESTINATION ${CMAKE_INSTALL_DOCDIR} RENAME copyright)
-
-# Debian package: build on the target (or natively for it) and install with dpkg/apt:
-#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr && cmake --build build -j
-#   cpack --config build/CPackConfig.cmake -G DEB      # writes build/plugin-discovery_<version>_<arch>.deb
 set(CPACK_GENERATOR DEB)
-set(CPACK_PACKAGE_NAME plugin-discovery)
+set(CPACK_PACKAGE_NAME plugin-discovery-platform-config)
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_CONTACT "Qualcomm Technologies, Inc. <noreply@qualcomm.com>")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Cross-platform backend mechanism for the Robotics SDK")
+set(CPACK_PACKAGE_CONTACT "Chalia <chalia@qti.qualcomm.com>")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "plugin_discovery platform configuration of all machines and domains")
 set(CPACK_PACKAGING_INSTALL_PREFIX /usr)
-set(CPACK_DEBIAN_PACKAGE_SECTION libs)
-set(CPACK_INSTALL_DEFAULT_DIRECTORY_PERMISSIONS
-  OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
-set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "systemd")
+set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE all)
+set(CPACK_DEBIAN_PACKAGE_SECTION libs)
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "plugin-discovery (>= 0.3.0)")
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
-  ${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst
-  ${CMAKE_CURRENT_SOURCE_DIR}/packaging/prerm
-  ${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm)
+  ${CMAKE_CURRENT_SOURCE_DIR}/packaging/postinst ${CMAKE_CURRENT_SOURCE_DIR}/packaging/postrm)
 include(CPack)
-
-if(PLUGIN_LOADER_BUILD_TESTS OR PLUGIN_LOADER_COMPARE_UPSTREAM)
-  find_package(Threads REQUIRED)
-  add_subdirectory(test)
-endif()

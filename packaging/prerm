@@ -1,8 +1,0 @@
-#!/bin/sh
-# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
-# SPDX-License-Identifier: BSD-3-Clause-Clear
-set -e
-if [ "$1" = remove ] && [ -d /run/systemd/system ]; then
-  systemctl disable --now plugin-discovery-platform-detect.service || true
-fi
-exit 0

@@ -1,9 +1,0 @@
-# Intentional deviation from class_loader: after a failed MultiLibraryClassLoader::loadLibrary() further calls work; class_loader segfaults (reproducible).
-create with nothing loaded -> CreateClassException
-create from unloaded library -> NoClassLoaderExistsException
-classes for unknown library -> NoClassLoaderExistsException
-load missing library -> LibraryLoadException
-registered after failure 0
-class not in loaded library -> CreateClassException
-class in other library -> CreateClassException
-[exit 0]

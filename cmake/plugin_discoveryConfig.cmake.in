@@ -1,7 +1,0 @@
-# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
-# SPDX-License-Identifier: BSD-3-Clause-Clear
-@PACKAGE_INIT@
-
-include("${CMAKE_CURRENT_LIST_DIR}/plugin_discoveryTargets.cmake")
-include("${CMAKE_CURRENT_LIST_DIR}/plugin_discoveryMacros.cmake")
-check_required_components(plugin_discovery)

@@ -2,13 +2,8 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 set -e
+# The candidate is gone: drop the link that pointed to it, and relink whatever else matches.
 case "$1" in
-  remove) ldconfig; [ -d /run/systemd/system ] && systemctl daemon-reload || true ;;
-  purge)
-    # State written by platform-detect (links it made, and the first-boot stamp). Customer
-    # files in /etc/plugin_discovery/config.d are the customer's and are left alone.
-    rm -rf /etc/plugin_discovery/platform.d /var/lib/plugin_discovery
-    rmdir /etc/plugin_discovery 2>/dev/null || true
-    ;;
+  remove|purge) [ -x /usr/bin/platform-detect ] && /usr/bin/platform-detect --force || true ;;
 esac
 exit 0
